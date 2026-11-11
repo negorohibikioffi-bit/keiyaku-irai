@@ -375,7 +375,7 @@ button:active{transform:scale(.98)}
     <script>
         // ========== 投稿先（Slack） ==========
         const SK = 'axia_keiyaku_irai_v2';
-        // threadApi：申込→Slack連携GAS（gas/slack_moushikomi_renkei/コード.gs）のウェブアプリURL
+        // gasUrl：Slack投稿用GAS（gas/Slack投稿用GAS.gs）のウェブアプリURL（設定画面で入れる）
         const DEFAULTS = { channel: 'C08P1PGLHT5', team: 'T08N4SFEAQN', threadApi: '', gasUrl: '' };
 
         function loadSettings() {
@@ -434,6 +434,7 @@ button:active{transform:scale(.98)}
         let currentThread = null;   // { ts, url }
         let threadSeq = 0;
         let threadTimer = null;
+        let threadSearching = false;
 
         function selectedPropertyName() {
             const v = document.getElementById('propertyName').value;
@@ -449,51 +450,54 @@ button:active{transform:scale(.98)}
 
         // ページを開いたらGASを起こしておく（入力し終わるころには早く返ってくる）
         function wakeThreadApi() {
-            if (!settings.threadApi) return;
-            const script = document.createElement('script');
-            script.src = settings.threadApi + (settings.threadApi.indexOf('?') === -1 ? '?' : '&') + 'callback=__threadWake';
-            window.__threadWake = function() { script.remove(); };
-            script.onerror = function() { script.remove(); };
-            document.head.appendChild(script);
+            if (!settings.gasUrl) return;
+            try { fetch(settings.gasUrl, { mode: 'no-cors' }).catch(function() {}); } catch (e) {}
         }
 
         function lookupThread(retried) {
             currentThread = null;
             renderChannelView();
             const property = selectedPropertyName();
-            if (!settings.threadApi || !property) {
+            if (!settings.gasUrl || !property) {
                 setThreadStatus('');
                 return;
             }
             const seq = ++threadSeq;
-            const cb = '__threadCb' + seq;
-            const script = document.createElement('script');
-            const timer = setTimeout(function() { done(null); }, THREAD_TIMEOUT_MS);
-            function done(data) {
+            threadSearching = true;
+            setThreadStatus('申込スレッドを探しています…');
+            const ctrl = new AbortController();
+            const timer = setTimeout(function() { ctrl.abort(); }, THREAD_TIMEOUT_MS);
+            fetch(settings.gasUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'findThread',
+                    channel: settings.channel,
+                    property: property,
+                    room: document.getElementById('roomNumber').value.trim(),
+                    customer: document.getElementById('customerName').value.trim()
+                }),
+                signal: ctrl.signal
+            }).then(function(r) { return r.json(); }).then(function(data) {
                 clearTimeout(timer);
-                // 時間切れの後に返事が届いてもエラーにならないよう、受け口は空にして残す
-                window[cb] = function() {};
-                script.remove();
                 if (seq !== threadSeq) return;   // 入力が変わった後の古い返事は捨てる
+                finish(data && data.ok ? data : null);
+            }).catch(function() {
+                clearTimeout(timer);
+                if (seq !== threadSeq) return;
                 // 届かなかったときは1回だけ聞き直す
-                if (!data && !retried) { lookupThread(true); return; }
+                if (!retried) { lookupThread(true); return; }
+                finish(null);
+            });
+
+            function finish(data) {
+                threadSearching = false;
                 currentThread = data && data.ts ? data : null;
                 renderChannelView();
                 setThreadStatus(currentThread
-                    ? '📌 ' + property + ' の申込スレッドを開きます'
-                    : (data ? '申込投稿が見つからないので、チャンネルを開きます' : 'スレッドを探せなかったので、チャンネルを開きます'));
+                    ? '📌 ' + property + ' の申込スレッドに返信します'
+                    : (data ? '申込投稿が見つかりません（チャンネルに新しく投稿します）' : 'スレッドを探せませんでした（チャンネルに新しく投稿します）'));
             }
-            window[cb] = done;
-            script.onerror = function() { done(null); };
-            const params = new URLSearchParams({
-                property: property,
-                room: document.getElementById('roomNumber').value.trim(),
-                customer: document.getElementById('customerName').value.trim(),
-                callback: cb
-            });
-            script.src = settings.threadApi + (settings.threadApi.indexOf('?') === -1 ? '?' : '&') + params.toString();
-            setThreadStatus('申込スレッドを探しています…');
-            document.head.appendChild(script);
         }
 
         function scheduleLookupThread() {
@@ -1448,6 +1452,14 @@ button:active{transform:scale(.98)}
                 showToast('同じ内容を投稿済みです。もう一度押すと再投稿します', 'error');
                 return;
             }
+            if (threadSearching) {
+                showToast('申込スレッドを探しています。少し待ってからもう一度押してください', 'error');
+                return;
+            }
+            if (!currentThread) {
+                const ok = confirm('申込のスレッドが見つかりません。\nチャンネルに新しく投稿しますか？');
+                if (!ok) return;
+            }
             const btn = this;
             const label = btn.textContent;
             btn.disabled = true;
@@ -1456,13 +1468,13 @@ button:active{transform:scale(.98)}
                 const res = await fetch(settings.gasUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ channel: settings.channel, text: reportText })
+                    body: JSON.stringify({ channel: settings.channel, text: reportText, thread_ts: currentThread ? currentThread.ts : '' })
                 });
                 const j = await res.json();
                 if (j.ok) {
                     lastPosted = reportText;
                     delete btn.dataset.again;
-                    showToast('Slackに投稿しました', 'success');
+                    showToast(currentThread ? '申込スレッドに投稿しました' : 'チャンネルに投稿しました', 'success');
                 } else {
                     showToast('投稿に失敗しました（' + (j.error || '不明') + '）', 'error');
                 }
