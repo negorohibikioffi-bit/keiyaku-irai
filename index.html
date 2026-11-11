@@ -376,7 +376,7 @@ button:active{transform:scale(.98)}
         // ========== 投稿先（Slack） ==========
         const SK = 'axia_keiyaku_irai_v2';
         // gasUrl：Slack投稿用GAS（gas/Slack投稿用GAS.gs）のウェブアプリURL（設定画面で入れる）
-        const DEFAULTS = { channel: 'C08P1PGLHT5', team: 'T08N4SFEAQN', threadApi: '', gasUrl: '' };
+        const DEFAULTS = { channel: 'C08P1PGLHT5', team: 'T08N4SFEAQN', threadApi: '', gasUrl: 'https://script.google.com/macros/s/AKfycbzQ_wAO5KUfO9r1PYTN-qCa-ENgwY6qxuMMSifeP9SIiqzD3Ms3uhm123No31MWU7hqDA/exec' };
 
         function loadSettings() {
             try {
@@ -398,6 +398,8 @@ button:active{transform:scale(.98)}
         // 旧バージョンで未保存の値は最新の既定値で補う
         if (!settings.team) { settings.team = DEFAULTS.team; saveSettings(settings); }
         if (!settings.channel) { settings.channel = DEFAULTS.channel; saveSettings(settings); }
+        // 端末に空の設定が残っていても、最初から入れてある投稿用URLを使う
+        if (!settings.gasUrl && DEFAULTS.gasUrl) { settings.gasUrl = DEFAULTS.gasUrl; saveSettings(settings); }
         if (!settings.threadApi && DEFAULTS.threadApi) { settings.threadApi = DEFAULTS.threadApi; saveSettings(settings); }
 
         const CHANNEL_NAMES = { 'C08P1PGLHT5': '#案件進捗', 'C08P1MWKVT5': '営業チャンネル', 'C08N4SFRQF8': '全体チャンネル' };
