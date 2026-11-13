@@ -551,6 +551,9 @@ button:active{transform:scale(.98)}
         ];
 
         // 名称が変わった物件（保存済みのリストも読み替える）
+        // 肩書きが変わった社員（保存済みのリストや前回の選択も読み替える）
+        const STAFF_RENAMES = { '儀間主任': '儀間係長' };
+
         const PROPERTY_RENAMES = {
             'AXIA CITY大阪瑞光': 'AXIA M-CITY大阪瑞光',
             'AXIA CITY浮間舟渡': 'AXIA M-CITY浮間公園',
@@ -568,7 +571,7 @@ button:active{transform:scale(.98)}
             '茂木社長', '井上常務', '笠原部長', '土屋次長', '家原部長',
             '伊藤係長', '川合部長', '安部課長', '髙野係長', '佐野係長',
             '浅見主任', '坪井社員', '桃井主任', '五十嵐主任', '三浦社員',
-            '儀間主任', '脇田主任', '内田社員', '瓜田社員', '柴田社員',
+            '儀間係長', '脇田主任', '内田社員', '瓜田社員', '柴田社員',
             '木村社員', '後藤社員', '糸永社員', '堀社員'
         ];
 
@@ -587,6 +590,7 @@ button:active{transform:scale(.98)}
                     let arr = JSON.parse(saved);
                     if (Array.isArray(arr) && arr.length > 0) {
                         if (type === 'property') arr = renameProperties(arr, def.key, saved);
+                        if (type === 'staff') arr = renameStaff(arr, def.key, saved);
                         return arr;
                     }
                 }
@@ -608,6 +612,27 @@ button:active{transform:scale(.98)}
             }
             return renamed;
         }
+
+        // 社員：保存済みリストの旧名称を新名称に読み替えて保存し直す
+        function renameStaff(arr, key, saved) {
+            const renamed = [];
+            arr.forEach(function(name) {
+                const fixed = STAFF_RENAMES[name] || name;
+                if (renamed.indexOf(fixed) === -1) renamed.push(fixed);
+            });
+            if (JSON.stringify(renamed) !== saved) {
+                try { localStorage.setItem(key, JSON.stringify(renamed)); } catch (e) {}
+            }
+            return renamed;
+        }
+
+        // 前回選んだ担当・同行も読み替える
+        ['lastPersonInCharge', 'lastAccompany'].forEach(function(k) {
+            try {
+                const v = localStorage.getItem(k);
+                if (v && STAFF_RENAMES[v]) localStorage.setItem(k, STAFF_RENAMES[v]);
+            } catch (e) {}
+        });
 
         // リスト保存＋ドロップダウン再描画
         function setList(type, arr) {
